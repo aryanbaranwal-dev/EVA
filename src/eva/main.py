@@ -8,6 +8,7 @@ import subprocess
 import shutil
 import webbrowser
 
+
 ASSISTANT_NAME = "EVA"
 USER_NAME = "Aryan"
 
@@ -17,11 +18,11 @@ USER_NAME = "Aryan"
 # ==========================================
 
 APP_ALLOWLIST = {
-    "notepad": ["notepad.exe"],
-    "calculator": ["calc.exe"],
-    "paint": ["mspaint.exe"],
-    "vscode": ["code"],
-    "chrome": ["chrome"],
+    "notepad": "notepad.exe",
+    "calculator": "calc.exe",
+    "paint": "mspaint.exe",
+    "vscode": "vscode",
+    "chrome": "chrome",
 }
 
 
@@ -150,7 +151,6 @@ def start_timer(seconds):
 
     try:
         time.sleep(seconds)
-
         print(f"{ASSISTANT_NAME}: Timer complete!")
 
     except KeyboardInterrupt:
@@ -221,82 +221,122 @@ def show_system_info():
 # APPLICATION LAUNCHER
 # ==========================================
 
+def find_first_existing(paths):
+    """Return the first existing executable file from approved paths."""
+
+    for path in paths:
+        if path and os.path.isfile(path):
+            return os.path.abspath(path)
+
+    return None
+
+
+def resolve_application(app_name):
+    """Resolve an approved application to an executable path."""
+
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+
+    system_apps = {
+        "notepad": os.path.join(
+            system_root, "System32", "notepad.exe"
+        ),
+        "calculator": os.path.join(
+            system_root, "System32", "calc.exe"
+        ),
+        "paint": os.path.join(
+            system_root, "System32", "mspaint.exe"
+        ),
+    }
+
+    if app_name in system_apps:
+        path = system_apps[app_name]
+        return path if os.path.isfile(path) else None
+
+    if app_name == "vscode":
+        candidates = [
+            os.path.join(
+                os.environ.get("LocalAppData", ""),
+                "Programs", "Microsoft VS Code", "Code.exe"
+            ),
+            os.path.join(
+                os.environ.get("ProgramFiles", ""),
+                "Microsoft VS Code", "Code.exe"
+            ),
+            os.path.join(
+                os.environ.get("ProgramFiles(x86)", ""),
+                "Microsoft VS Code", "Code.exe"
+            ),
+        ]
+
+        path = find_first_existing(candidates)
+
+        # PATH fallback: useful for custom VS Code installations.
+        # The resolved executable should be from a trusted installation.
+        if path is None:
+            path = shutil.which("code")
+
+        return path
+
+    if app_name == "chrome":
+        candidates = [
+            os.path.join(
+                os.environ.get("ProgramFiles", ""),
+                "Google", "Chrome", "Application", "chrome.exe"
+            ),
+            os.path.join(
+                os.environ.get("ProgramFiles(x86)", ""),
+                "Google", "Chrome", "Application", "chrome.exe"
+            ),
+            os.path.join(
+                os.environ.get("LocalAppData", ""),
+                "Google", "Chrome", "Application", "chrome.exe"
+            ),
+        ]
+
+        return find_first_existing(candidates)
+
+    return None
+
+
 def open_application(app_name):
     """Launch an approved Windows application."""
 
-    if app_name not in APP_ALLOWLIST:
+    app_name = app_name.strip().casefold()
 
+    if app_name not in APP_ALLOWLIST:
         print(
             f"{ASSISTANT_NAME}: Application "
             f"'{app_name}' is not in my approved list."
         )
-
         print(
             "Approved applications: "
             + ", ".join(APP_ALLOWLIST.keys())
         )
-
         return
 
     try:
-        app_command = APP_ALLOWLIST[app_name]
+        executable = resolve_application(app_name)
 
-        executable = shutil.which(app_command[0])
-
-        if executable:
-            app_command = [executable] + app_command[1:]
-
-        elif app_name == "chrome":
-
-            possible_paths = [
-                os.path.expandvars(
-                    r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"
-                ),
-                os.path.expandvars(
-                    r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
-                ),
-                os.path.expandvars(
-                    r"%LocalAppData%\Google\Chrome\Application\chrome.exe"
-                ),
-            ]
-
-            chrome_path = next(
-                (
-                    path for path in possible_paths
-                    if os.path.isfile(path)
-                ),
-                None
-            )
-
-            if chrome_path:
-                app_command = [chrome_path]
-
-            else:
-                print(
-                    f"{ASSISTANT_NAME}: "
-                    "Chrome installation not found."
-                )
-                return
-
-        else:
+        if not executable:
             print(
                 f"{ASSISTANT_NAME}: Could not find "
                 f"{app_name}. Check its installation."
             )
             return
 
-        subprocess.Popen(app_command)
+        subprocess.Popen(
+            [executable],
+            shell=False,
+            close_fds=True
+        )
 
         print(f"{ASSISTANT_NAME}: Opening {app_name}...")
 
-    except OSError as error:
-
+    except OSError:
         print(
             f"{ASSISTANT_NAME}: "
             f"Could not open {app_name}."
         )
-
-        print(f"Error: {error}")
 
 
 def handle_open_command(command):
@@ -305,16 +345,13 @@ def handle_open_command(command):
     parts = command.split(maxsplit=1)
 
     if len(parts) != 2 or not parts[1].strip():
-
         print(
             f"{ASSISTANT_NAME}: "
             "Usage: open <application_name>"
         )
-
         return
 
     app_name = parts[1].strip()
-
     open_application(app_name)
 
 
@@ -325,23 +362,21 @@ def handle_open_command(command):
 def open_website(website_name):
     """Open an approved website in the default browser."""
 
-    if website_name not in WEBSITE_ALLOWLIST:
+    website_name = website_name.strip().casefold()
 
+    if website_name not in WEBSITE_ALLOWLIST:
         print(
             f"{ASSISTANT_NAME}: Website "
             f"'{website_name}' is not in my approved list."
         )
-
         print(
             "Approved websites: "
             + ", ".join(WEBSITE_ALLOWLIST.keys())
         )
-
         return
 
     try:
         url = WEBSITE_ALLOWLIST[website_name]
-
         opened = webbrowser.open(url)
 
         if opened:
@@ -355,14 +390,11 @@ def open_website(website_name):
                 "Could not open the website."
             )
 
-    except Exception as error:
-
+    except Exception:
         print(
             f"{ASSISTANT_NAME}: "
             "An error occurred while opening the website."
         )
-
-        print(f"Error: {error}")
 
 
 def handle_website_command(command):
@@ -371,16 +403,13 @@ def handle_website_command(command):
     parts = command.split(maxsplit=1)
 
     if len(parts) != 2 or not parts[1].strip():
-
         print(
             f"{ASSISTANT_NAME}: "
             "Usage: website <website_name>"
         )
-
         return
 
     website_name = parts[1].strip()
-
     open_website(website_name)
 
 
@@ -388,56 +417,66 @@ def handle_website_command(command):
 # FOLDER LAUNCHER
 # ==========================================
 
+def validate_folder_path(folder_path):
+    """Validate that an approved folder exists and is a directory."""
+
+    try:
+        absolute_path = os.path.abspath(folder_path)
+        resolved_path = os.path.realpath(absolute_path)
+
+        if not os.path.isdir(resolved_path):
+            return None
+
+        return resolved_path
+
+    except (OSError, ValueError):
+        return None
+
+
 def open_folder(folder_name):
     """Open an approved folder in Windows File Explorer."""
 
-    if folder_name not in FOLDER_ALLOWLIST:
+    folder_name = folder_name.strip().casefold()
 
+    if folder_name not in FOLDER_ALLOWLIST:
         print(
             f"{ASSISTANT_NAME}: Folder "
             f"'{folder_name}' is not in my approved list."
         )
-
         print(
             "Approved folders: "
             + ", ".join(FOLDER_ALLOWLIST.keys())
         )
-
         return
 
-    folder_path = FOLDER_ALLOWLIST[folder_name]
-
-    if not os.path.isdir(folder_path):
-
+    if platform.system() != "Windows":
         print(
             f"{ASSISTANT_NAME}: "
-            f"The folder '{folder_name}' does not exist."
+            "Folder opening is currently supported on Windows."
         )
+        return
 
-        print(f"Expected path: {folder_path}")
+    folder_path = validate_folder_path(
+        FOLDER_ALLOWLIST[folder_name]
+    )
+
+    if folder_path is None:
+        print(
+            f"{ASSISTANT_NAME}: "
+            f"The folder '{folder_name}' does not exist "
+            "or could not be validated."
+        )
         return
 
     try:
-
-        if platform.system() != "Windows":
-            print(
-                f"{ASSISTANT_NAME}: "
-                "Folder opening is currently supported on Windows."
-            )
-            return
-
         os.startfile(folder_path)
-
         print(f"{ASSISTANT_NAME}: Opening {folder_name}...")
 
-    except OSError as error:
-
+    except OSError:
         print(
             f"{ASSISTANT_NAME}: "
             f"Could not open {folder_name}."
         )
-
-        print(f"Error: {error}")
 
 
 def handle_folder_command(command):
@@ -446,16 +485,13 @@ def handle_folder_command(command):
     parts = command.split(maxsplit=1)
 
     if len(parts) != 2 or not parts[1].strip():
-
         print(
             f"{ASSISTANT_NAME}: "
             "Usage: folder <folder_name>"
         )
-
         return
 
     folder_name = parts[1].strip()
-
     open_folder(folder_name)
 
 
@@ -467,12 +503,10 @@ def search_web(query):
     """Search Google using a URL-encoded query."""
 
     if not query.strip():
-
         print(
             f"{ASSISTANT_NAME}: "
             "Please enter something to search."
         )
-
         return
 
     encoded_query = quote_plus(query)
@@ -483,7 +517,6 @@ def search_web(query):
     )
 
     try:
-
         opened = webbrowser.open(search_url)
 
         if opened:
@@ -491,39 +524,32 @@ def search_web(query):
                 f"{ASSISTANT_NAME}: "
                 f"Searching Google for: {query}"
             )
-
         else:
             print(
                 f"{ASSISTANT_NAME}: "
                 "Could not open Google search."
             )
 
-    except Exception as error:
-
+    except Exception:
         print(
             f"{ASSISTANT_NAME}: "
             "An error occurred during web search."
         )
 
-        print(f"Error: {error}")
-
 
 def handle_search_command(command):
-    """Extract the search query and start web search."""
+    """Extract the original search query and start web search."""
 
     parts = command.split(maxsplit=1)
 
     if len(parts) != 2 or not parts[1].strip():
-
         print(
             f"{ASSISTANT_NAME}: "
             "Usage: search <your search query>"
         )
-
         return
 
     query = parts[1].strip()
-
     search_web(query)
 
 
@@ -537,64 +563,63 @@ def main():
     show_greeting()
 
     while True:
+        try:
+            raw_command = input("\nYou: ").strip()
 
-        command = input("\nYou: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print(
+                f"\n{ASSISTANT_NAME}: "
+                "Session interrupted. Goodbye!"
+            )
+            break
 
-        if command == "exit":
+        # Preserve original input for search queries.
+        normalized_command = raw_command.casefold()
 
+        if normalized_command == "exit":
             print(
                 f"{ASSISTANT_NAME}: "
                 "Goodbye! See you again."
             )
-
             break
 
-        elif command == "help":
-
+        elif normalized_command == "help":
             show_help()
 
-        elif command in ("what can you do?", "what can you do"):
-
+        elif normalized_command in (
+            "what can you do?",
+            "what can you do"
+        ):
             show_capabilities()
 
-        elif command == "time":
-
+        elif normalized_command == "time":
             show_time()
 
-        elif command == "date":
-
+        elif normalized_command == "date":
             show_date()
 
-        elif command == "system":
-
+        elif normalized_command == "system":
             show_system_info()
 
-        elif command == "timer" or command.startswith("timer "):
+        elif normalized_command == "timer" or normalized_command.startswith("timer "):
+            handle_timer(raw_command)
 
-            handle_timer(command)
+        elif normalized_command == "open" or normalized_command.startswith("open "):
+            handle_open_command(raw_command)
 
-        elif command == "open" or command.startswith("open "):
+        elif normalized_command == "website" or normalized_command.startswith("website "):
+            handle_website_command(raw_command)
 
-            handle_open_command(command)
+        elif normalized_command == "folder" or normalized_command.startswith("folder "):
+            handle_folder_command(raw_command)
 
-        elif command == "website" or command.startswith("website "):
+        elif normalized_command == "search" or normalized_command.startswith("search "):
+            handle_search_command(raw_command)
 
-            handle_website_command(command)
-
-        elif command == "folder" or command.startswith("folder "):
-
-            handle_folder_command(command)
-
-        elif command == "search" or command.startswith("search "):
-
-            handle_search_command(command)
-
-        elif command == "":
-
+        elif normalized_command == "":
             continue
 
         else:
-
             print(
                 f"{ASSISTANT_NAME}: "
                 "I don't understand that command yet. "
